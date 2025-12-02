@@ -1,0 +1,122 @@
+queue.py
+from collections import deque
+from typing import Generic, TypeVar, Optional, Iterator
+
+T = TypeVar("T")
+
+class FIFOQueue(Generic[T]):
+    def __init__(self):
+        self._dq = deque()
+
+    def enqueue(self, item: T) -> None:
+        self._dq.append(item)
+
+    def dequeue(self) -> T:
+        return self._dq.popleft()
+
+    def peek(self) -> Optional[T]:
+        try:
+            return self._dq[0]
+        except IndexError:
+            return None
+
+    def is_empty(self) -> bool:
+        return len(self._dq) == 0
+
+    def __len__(self) -> int:
+        return len(self._dq)
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(self._dq)
+
+handlers.py
+from dataclasses import dataclass
+from typing import Callable, Dict
+class TerminalState(Exception):
+    pass
+
+@dataclass
+class Package:
+    package_id: str
+    status: str
+    history: list
+
+    def add_history(self, note: str):
+        self.history.append(note)
+def handle_received(pkg: Package) -> Package:
+    pkg.add_history("Recebido no centro de triagem")
+    pkg.status = "queued_for_sorting"
+    return pkg
+
+def handle_queued_for_sorting(pkg: Package) -> Package:
+    pkg.add_history("Em fila para triagem")
+    pkg.status = "in_transit"
+    return pkg
+
+def handle_in_transit(pkg: Package) -> Package:
+    pkg.add_history("Em trânsito entre centros")
+    pkg.status = "out_for_delivery"
+    return pkg
+
+def handle_out_for_delivery(pkg: Package) -> Package:
+    pkg.add_history("Saiu para entrega")
+    pkg.status = "delivered"
+    return pkg
+
+def handle_delivered(pkg: Package) -> Package:
+    pkg.add_history("Entregue")
+    pkg.status = "archived"
+raise TerminalState(f"{pkg.package_id} entregue; terminal.")
+
+def handle_archived(pkg: Package) -> Package:
+    pkg.add_history("Pacote arquivado - sem ação")
+raise TerminalState(f"{pkg.package_id} arquivado; terminal.")
+STATUS_HANDLERS: Dict[str, Callable[[Package], Package]] = {
+    "received": handle_received,
+    "queued_for_sorting": handle_queued_for_sorting,
+    "in_transit": handle_in_transit,
+    "out_for_delivery": handle_out_for_delivery,
+    "delivered": handle_delivered,
+    "archived": handle_archived,
+}
+
+def process_package(pkg: Package) -> Package:
+ handler = STATUS_HANDLERS[pkg.status]
+    return handler(pkg)
+
+main.py
+from queue import FIFOQueue
+from handlers import Package, process_package, TerminalState
+
+def demo_flow():
+    q = FIFOQueue()
+    pkgs = [Package(package_id=f"PKG{i+1}", status="received", history=[]) for i in range(3)]
+    for p in pkgs:
+        q.enqueue(p)
+
+    print("Fila inicial:", [p.package_id for p in q])
+while True:
+        try:
+            pkg = q.dequeue()
+        except IndexError:
+break
+
+        try:
+            pkg = process_package(pkg)
+        except TerminalState as term:
+ print(f"{pkg.package_id} -> terminal: {term}")
+        except KeyError as ke:
+pkg.add_history(f"Erro: status desconhecido ({ke}); forçando arquivamento")
+            pkg.status = "archived"
+            print(f"{pkg.package_id} -> status desconhecido: {ke}")
+ try:
+                process_package(pkg)
+            except TerminalState as term2:
+                print(f"{pkg.package_id} -> terminal após fallback: {term2}")
+        else:
+q.enqueue(pkg)
+
+    print("Processamento finalizado.")
+
+if __name__ == "__main__":
+    demo_flow()
