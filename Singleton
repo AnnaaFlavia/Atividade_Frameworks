@@ -1,0 +1,193 @@
+import random
+import time
+import threading
+import os
+import sys
+from typing import List, Tuple
+
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+class SingletonMeta(type):
+    _instances = {}
+    _lock = threading.Lock()
+
+    def __call__(cls, *args, **kwargs):
+ with cls._lock:
+            if cls not in cls._instances:
+                cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+class MapFactory(metaclass=SingletonMeta):
+ def create_maze(self, width: int, height: int) -> List[List[str]]:
+ if width % 2 == 0:
+            width += 1
+        if height % 2 == 0:
+            height += 1
+
+        w, h = width, height
+maze = [['#' for _ in range(w)] for _ in range(h)]
+ def carve(r, c):
+            maze[r][c] = ' '
+            dirs = [(0,-2),(0,2),(-2,0),(2,0)]
+            random.shuffle(dirs)
+            for dr, dc in dirs:
+                nr, nc = r + dr, c + dc
+                if 1 <= nr < h-1 and 1 <= nc < w-1 and maze[nr][nc] == '#':
+maze[r + dr//2][c + dc//2] = ' '
+                    carve(nr, nc)
+ carve(1,1)
+        return maze
+
+class MazeGame:
+    def __init__(self, total_levels: int = 3, start_size: Tuple[int,int]=(21,11)):
+        self.factory = MapFactory()  # singleton instance
+        self.total_levels = max(1, total_levels)
+        self.level = 1
+        self.size_w, self.size_h = start_size
+        self.player_pos = (1,1)
+        self.exit_pos = None
+        self.maze = []
+        self._stop_timer = threading.Event()
+        self.elapsed = 0.0
+        self.timer_thread = None
+ def start_timer(self):
+        self.start_time = time.time()
+        self._stop_timer.clear()
+        def _run():
+            while not self._stop_timer.is_set():
+                self.elapsed = time.time() - self.start_time
+                time.sleep(0.5)
+        self.timer_thread = threading.Thread(target=_run, daemon=True)
+        self.timer_thread.start()
+
+    def stop_timer(self):
+        self._stop_timer.set()
+        if self.timer_thread:
+            self.timer_thread.join(timeout=0.1)
+
+    def format_elapsed(self):
+        secs = int(self.elapsed)
+        m = secs // 60
+        s = secs % 60
+        return f"{m:02d}:{s:02d}"
+
+    def generate_level(self):
+ w = self.size_w + (self.level - 1) * 4
+        h = self.size_h + (self.level - 1) * 2
+ w = max(11, w) | 1  
+        h = max(7, h) | 1
+        self.maze = self.factory.create_maze(w, h)
+ found_entry = False
+        for r in range(1, h-1, 2):
+            if self.maze[r][1] == ' ':
+                self.player_pos = (r, 0) 
+                self.maze[r][0] = ' '     
+                found_entry = True
+                break
+        if not found_entry:
+ self.player_pos = (1,0)
+            self.maze[1][0] = ' 
+found_exit = False
+        for r in range(h-2, 0, -2):
+            if self.maze[r][w-2] == ' ':
+                self.exit_pos = (r, w-1)
+                self.maze[r][w-1] = ' '  
+                found_exit = True
+                break
+        if not found_exit:
+            self.exit_pos = (h-2, w-1)
+            self.maze[h-2][w-1] = ' '
+ def draw(self):
+        clear_screen()
+        print(f"Labirinto - Nível {self.level}/{self.total_levels}   Tempo: {self.format_elapsed()}")
+        rows = len(self.maze)
+        cols = len(self.maze[0]) if rows>0 else 0
+        for r in range(rows):
+            row_chars = []
+            for c in range(cols):
+                if (r,c) == self.player_pos:
+                    row_chars.append('P')
+                elif (r,c) == self.exit_pos:
+                    row_chars.append('E')
+                else:
+                    row_chars.append(self.maze[r][c])
+            print(''.join(row_chars))
+        print("\nControles: N (up) / S (down) / W (left) / E (right) — ou W/A/S/D")
+        print("Digite Q para sair. Ao alcançar 'E' você avança para o próximo mapa.")
+        print("Dica: mova-se pela linha/coluna de espaços. Você pode estar na 'entrada' fora do grid.")
+
+    def move_player(self, direction: str):
+  dir_map = {
+            'N': (-1, 0), 'S': (1, 0), 'W': (0, -1), 'E': (0, 1),
+            'w': (-1, 0), 's': (1, 0), 'a': (0, -1), 'd': (0, 1)
+        }
+        if direction not in dir_map:
+            return
+        dr, dc = dir_map[direction]
+        r, c = self.player_pos
+        nr, nc = r + dr, c + dc
+  rows = len(self.maze)
+        cols = len(self.maze[0])
+  if 0 <= nr < rows and 0 <= nc < cols and self.maze[nr][nc] == ' ':
+            self.player_pos = (nr, nc)
+  exr, exc = self.exit_pos
+        if (nr, nc) == (exr, exc):
+            self.player_pos = (nr, nc)
+
+    def is_at_exit(self) -> bool:
+        return self.player_pos == self.exit_pos
+
+    def play(self):
+        self.start_timer()
+        try:
+            while self.level <= self.total_levels:
+                self.generate_level()
+while True:
+                    self.draw()
+                    choice = input("Movimento (N/S/E/W ou W/A/S/D): ").strip()
+                    if not choice:
+                        continue
+                    ch = choice[0]
+                    if ch in ('Q','q'):
+                        print("Você desistiu. Saindo do jogo...")
+                        self.stop_timer()
+                        return
+ self.move_player(ch)
+                    if self.is_at_exit():
+  clear_screen()
+                        elapsed_level = time.time() - self.start_time
+                        print(f"Você encontrou a saída do nível {self.level}!")
+                        print(f"Tempo total até aqui: {self.format_elapsed()}")
+                        input("Pressione Enter para continuar para o próximo nível...")
+                        self.level += 1
+                        break
+ self.stop_timer()
+            clear_screen()
+            print("PARABÉNS — Você venceu todos os labirintos!")
+            print(f"Tempo final: {self.format_elapsed()}")
+            print("Obrigado por jogar.")
+        finally:
+            self.stop_timer()
+def main():
+    clear_screen()
+    print("=== Jogo do Labirinto (Console) ===")
+    print("Regras rápidas:")
+    print("- Use N/S/E/W ou W/A/S/D para mover (N = norte/up, S = sul/down, E = leste/right, W = oeste/left).")
+    print("- Encontre a saída (E) para gerar o próximo mapa.")
+    print("- Vença um número limitado de mapas para ganhar o jogo.")
+    print()
+    try:
+        total = int(input("Quantos mapas deseja vencer para ganhar? (padrão 3): ") or "3")
+    except ValueError:
+        total = 3
+    try:
+        sizew = int(input("Largura inicial do mapa (número ímpar, sugestão 21): ") or "21")
+        sizeh = int(input("Altura inicial do mapa (número ímpar, sugestão 11): ") or "11")
+    except ValueError:
+        sizew, sizeh = 21, 11
+
+    game = MazeGame(total_levels=total, start_size=(sizew, sizeh))
+    game.play()
+
+if __name__ == "__main__":
+    main()
